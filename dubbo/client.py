@@ -40,7 +40,7 @@ class DubboClient(object):
     用于实现dubbo调用的客户端
     """
 
-    def __init__(self, interface, version='1.0.0', dubbo_version='2.4.10', zk_register=None, host=None):
+    def __init__(self, interface, version='', dubbo_version='',group=None,zk_register=None, host=None):
         """
         :param interface: 接口名，例如：com.qianmi.pc.es.api.EsProductQueryProvider
         :param version: 接口的版本号，例如：1.0.0，默认为1.0.0
@@ -56,7 +56,7 @@ class DubboClient(object):
         self.__interface = interface
         self.__version = version
         self.__dubbo_version = dubbo_version
-
+        self.__group=group
         self.__zk_register = zk_register
         self.__host = host
 
@@ -91,6 +91,7 @@ class DubboClient(object):
         request_param = {
             'dubbo_version': self.__dubbo_version,
             'version': self.__version,
+            'group': self.__group,
             'path': self.__interface,
             'method': method,
             'arguments': args,

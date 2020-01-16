@@ -156,6 +156,7 @@ class Request(object):
         version = self.__body['version']
         method = self.__body['method']
         arguments = self.__body['arguments']
+        group = self.__body['group']
 
         body = []
         body.extend(self._encode_single_value(dubbo_version))
@@ -165,12 +166,13 @@ class Request(object):
         body.extend(self._encode_single_value(self._get_parameter_types(arguments)))
         for argument in arguments:
             body.extend(self._encode_single_value(argument))
-
         attachments = {
             'path': path,
             'interface': path,
-            'version': version
+            'version': version,
         }
+        if group:
+            attachments.update({'group':group})
         # attachments参数以H开头，以Z结尾
         body.append(ord('H'))
         for key in attachments.keys():
