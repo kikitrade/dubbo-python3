@@ -46,7 +46,7 @@ class Object(object):
         :param path:   Java对象的路径，例如：java.lang.Object
         :param values: 可以在创建对象时就进行赋值
         """
-        if not isinstance(path, (str, unicode)):
+        if not isinstance(path, (str)):
             raise ValueError('Object path {} should be string type.'.format(path))
         self.__path = path
         if not isinstance(values, dict):
@@ -57,7 +57,7 @@ class Object(object):
         return self.__values[key]
 
     def __setitem__(self, key, value):
-        if not isinstance(key, (str, unicode)):
+        if not isinstance(key, (str)):
             raise ValueError('Object key {} should be string type.'.format(key))
         self.__values[key] = value
 
@@ -133,7 +133,7 @@ class Request(object):
                 return 'J'
         elif isinstance(_class, float):
             return 'D'
-        elif isinstance(_class, (str, unicode)):
+        elif isinstance(_class, (str)):
             return 'L' + 'java/lang/String' + ';'
         elif isinstance(_class, Object):
             path = _class.get_path()
@@ -180,7 +180,7 @@ class Request(object):
         body.append(ord('Z'))
 
         # 因为在上面的逻辑中没有对byte大小进行检测，所以在这里进行统一的处理
-        for i in xrange(len(body)):
+        for i in range(len(body)):
             body[i] = body[i] & 0xff
         return body
 
@@ -287,7 +287,7 @@ class Request(object):
         """
         result = []
         for v in value:
-            ch = ord(v)
+            ch = v
             if ch < 0x80:
                 result.append(ch & 0xff)
             elif ch < 0x800:
@@ -308,7 +308,7 @@ class Request(object):
         result = []
         # 在进行网络传输操作时一律使用unicode进行操作
         if isinstance(value, str):
-            value = value.decode('utf-8')
+            value = value.encode('utf-8')
         length = len(value)
         if length <= 0x1f:
             result.append(0x00 + length)
@@ -415,7 +415,7 @@ class Request(object):
         elif isinstance(value, float):
             return self._encode_float(value)
         # 字符串类型
-        elif isinstance(value, (str, unicode)):
+        elif isinstance(value, (str)):
             return self._encode_str(value)
         # 对象类型
         elif isinstance(value, Object):
