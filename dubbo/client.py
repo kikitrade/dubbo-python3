@@ -256,12 +256,16 @@ class ZkRegister(object):
             'interface': provider_fields['interface'],
             'methods': provider_fields['methods'],
             'pid': get_pid(),
-            'revision': provider_fields['revision'],
             'side': 'consumer',
-            'timestamp': int(time.time() * 1000),
-            # 2020/1/16 yanchunhuo 加注释
-            #'version': provider_fields['version'],
+            'timestamp': int(time.time() * 1000),            
         }
+
+        if provider_fields.get('revision'):
+            fields['revision'] = provider_fields.get('revision')
+        
+        if provider_fields.get('version'):
+            fields['version'] = provider_fields.get('version')
+        
 
         params = []
         for key, value in sorted(fields.items()):
