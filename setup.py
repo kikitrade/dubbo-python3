@@ -21,12 +21,12 @@
 from setuptools import setup, find_packages
 
 setup(
-    name='python-dubbo',
-    version='0.0.4',
-    url='https://github.com/RitterHou/python-dubbo',
-    author='hourui',
-    author_email='hourui@qianmi.com',
-    description='Python Dubbo Client.',
+    name='dubbo-python3',
+    version='1.0.0',
+    url='https://github.com/kikitrade/dubbo-python3',
+    author='holly',
+    author_email='hao.holly@gmail.com',
+    description='Python3 Dubbo Client.',
     license='Apache License 2.0',
     packages=find_packages(exclude=['tests', 'tools']),
     classifiers=[
@@ -34,7 +34,11 @@ setup(
         'Intended Audience :: Developers',
         'Natural Language :: Chinese (Simplified)',
         'Operating System :: OS Independent',
-        'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 3',
+        'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.8',
+        'Programming Language :: Python :: 3.9',
     ],
     install_requires=[
         'kazoo==2.4.0'
