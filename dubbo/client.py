@@ -22,6 +22,7 @@ import logging
 import threading
 import time
 import random
+from typing import Optional
 from urllib.parse import quote
 
 from kazoo.client import KazooClient
@@ -40,7 +41,7 @@ class DubboClient(object):
     用于实现dubbo调用的客户端
     """
 
-    def __init__(self, interface, version='', dubbo_version='',group=None,zk_register=None, host=None):
+    def __init__(self, interface, version=None, dubbo_version='2.6.1',group=None,zk_register=None, host=None):
         """
         :param interface: 接口名，例如：com.qianmi.pc.es.api.EsProductQueryProvider
         :param version: 接口的版本号，例如：1.0.0，默认为1.0.0
@@ -83,19 +84,23 @@ class DubboClient(object):
             args = [args]
 
         if self.__zk_register:  # 优先从zk中获取provider的host
-            host = self.__zk_register.get_provider_host(self.__interface)
+            host = self.__zk_register.get_provider_host(self.__interface, self.__group, self.__version)
         else:
             host = self.__host
         # logger.debug('get host {}'.format(host))
 
         request_param = {
             'dubbo_version': self.__dubbo_version,
-            'version': self.__version,
-            'group': self.__group,
             'path': self.__interface,
             'method': method,
             'arguments': args,
         }
+
+        if self.__group:
+            request_param['group'] = self.__group
+
+        if self.__version:
+            request_param['version'] = self.__version
 
         logger.debug('Start request, host={}, params={}'.format(host, request_param))
         start_time = time.time()
@@ -116,7 +121,7 @@ class ZkRegister(object):
        的一个consumer注册到zk中，并设置此节点的状态为ephemeral；
     """
 
-    def __init__(self, hosts, application_name='search_platform'):
+    def __init__(self, hosts, application_name='kiki_manager'):
         """
         :param hosts: Zookeeper的地址
         :param application_name: 当前客户端的名称
@@ -142,10 +147,12 @@ class ZkRegister(object):
         else:
             logger.debug('Connected or disconnected to zookeeper.')
 
-    def get_provider_host(self, interface):
+    def get_provider_host(self, interface, consumer_group, consumer_version):
         """
         从zk中可以根据接口名称获取到此接口某个provider的host
         :param interface:
+        :param consumer_group: 消费者group
+        :param consumer_version: 消费者version
         :return:
         """
         if interface not in self.hosts:
@@ -154,7 +161,7 @@ class ZkRegister(object):
                 if interface not in self.hosts:
                     path = DUBBO_ZK_PROVIDERS.format(interface)
                     if self.zk.exists(path):
-                        self._get_providers_from_zk(path, interface)
+                        self._get_providers_from_zk(path, interface, consumer_group, consumer_version)
                         self._get_configurators_from_zk(interface)
                     else:
                         raise RegisterException('No providers for interface {0}'.format(interface))
@@ -162,21 +169,66 @@ class ZkRegister(object):
                 self.lock.release()
         return self._routing_with_wight(interface)
 
-    def _get_providers_from_zk(self, path, interface):
+    def _warp_watch(self, consumer_group, consumer_version):
+        def _watch_children(event):
+            """
+            对某个provider下的子节点进行监听，一旦provider发生了变化则对本地缓存进行更新
+            :param event:
+            :return:
+            """
+            path = event.path
+            logger.debug('zookeeper node changed: {}'.format(path))
+            interface = path.split('/')[2]
+
+            providers = self.zk.get_children(path, watch=self._warp_watch(consumer_group, consumer_version))
+            providers = list(filter(lambda provider: provider['scheme'] == 'dubbo', map(parse_url, providers)))
+            # filter with group, version
+            providers = self._filter_with_group_version(providers, consumer_group, consumer_version)
+            if not providers:
+                logger.debug('no providers for interface {}'.format(interface))
+                self.hosts[interface] = []
+                return
+            self.hosts[interface] = list(map(lambda provider: provider['host'], providers))
+            logger.debug('{} providers: {}'.format(interface, self.hosts[interface]))
+
+        return _watch_children
+
+    def _get_providers_from_zk(self, path, interface, consumer_group, consumer_version):
         """
         从zk中根据interface获取到providers信息
         :param path:
         :param interface:
         :return:
         """
-        providers = self.zk.get_children(path, watch=self._watch_children)
-        # 2020/1/16 yanchunhuo 修改
+        providers = self.zk.get_children(path, watch=self._warp_watch(consumer_group, consumer_version))
         providers = list(filter(lambda provider: provider['scheme'] == 'dubbo', map(parse_url, providers)))
+        # filter with group, version
+        providers = ZkRegister._filter_with_group_version(providers, consumer_group, consumer_version)
         if not providers:
             raise RegisterException('no providers for interface {}'.format(interface))
         self._register_consumer(providers)
-        # 2020/1/16 yanchunhuo 修改
         self.hosts[interface] = list(map(lambda provider: provider['host'], providers))
+
+    @staticmethod
+    def _filter_with_group_version(providers, consumer_group, consumer_version) -> list:
+        return list(filter(lambda provider:
+                           (consumer_group is None or '*' == consumer_group or provider['fields'].get('group') == consumer_group
+                            or ZkRegister.is_contain(consumer_group, provider['fields'].get('group'))
+                            or ZkRegister.is_contain(consumer_group, provider['fields'].get('default.group'))
+                            and (
+                            consumer_version is None or '*' == consumer_version
+                            or provider['fields'].get('version') == consumer_version
+                            or ZkRegister.is_contain(consumer_version, provider['fields'].get('version'))
+                            )), providers))
+
+    @staticmethod
+    def is_contain(contains_value: Optional[str], value: Optional[str]) -> bool:
+        if not contains_value:
+            return False
+        if not value:
+            return False
+        if value in contains_value.split(','):
+            return True
 
     def _get_configurators_from_zk(self, interface):
         """
@@ -191,27 +243,6 @@ class ZkRegister(object):
             for configurator in configurators:
                 conf[configurator['host']] = configurator['fields'].get('weight', 100)  # 默认100
             self.weights[interface] = conf
-
-    def _watch_children(self, event):
-        """
-        对某个provider下的子节点进行监听，一旦provider发生了变化则对本地缓存进行更新
-        :param event:
-        :return:
-        """
-        path = event.path
-        logger.debug('zookeeper node changed: {}'.format(path))
-        interface = path.split('/')[2]
-
-        providers = self.zk.get_children(path, watch=self._watch_children)
-        # 2020/1/16 yanchunhuo 修改
-        providers = list(filter(lambda provider: provider['scheme'] == 'dubbo', map(parse_url, providers)))
-        if not providers:
-            logger.debug('no providers for interface {}'.format(interface))
-            self.hosts[interface] = []
-            return
-        # 2020/1/16 yanchunhuo 修改
-        self.hosts[interface] = list(map(lambda provider: provider['host'], providers))
-        logger.debug('{} providers: {}'.format(interface, self.hosts[interface]))
 
     def _watch_configurators(self, event):
         """

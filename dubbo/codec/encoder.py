@@ -151,12 +151,12 @@ class Request(object):
         对所有的已知的参数根据dubbo协议进行编码
         :return:
         """
-        dubbo_version = self.__body['dubbo_version']
-        path = self.__body['path']
-        version = self.__body['version']
-        method = self.__body['method']
-        arguments = self.__body['arguments']
-        group = self.__body['group']
+        dubbo_version = self.__body.get('dubbo_version')
+        path = self.__body.get('path')
+        version = self.__body.get('version')
+        method = self.__body.get('method')
+        arguments = self.__body.get('arguments')
+        group = self.__body.get('group')
 
         body = []
         body.extend(self._encode_single_value(dubbo_version))
