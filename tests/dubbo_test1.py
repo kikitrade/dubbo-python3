@@ -49,9 +49,17 @@ class TestDubbo(unittest.TestCase):
         from dubbo.client import DubboClient, ZkRegister
 
         zk = ZkRegister('172.30.41.18:2181')
-        remoteCustomerService = DubboClient('hry.exchange.api.remote.customer.RemoteCustomerService', group='exchange', zk_register=zk)
-        customer = remoteCustomerService.call('getById', '20202122')
-        print(json.dumps(customer))
+        product_service = DubboClient('hry.exchange.api.remote.account.RemoteExProductService', group='exchange', zk_register=zk)
+        customer = Object('hry.model.exchange.ExProduct',
+                          {
+                              'id': 1,
+                              'withdrawAlertMin': '12.01'
+                          },
+                          {
+                              'withdrawAlertMin': 'java.math.BigDecimal'
+                          })
+        result = product_service.call('update', customer)
+        print(json.dumps(result))
 
 
 if __name__ == '__main__':

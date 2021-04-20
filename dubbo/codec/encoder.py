@@ -17,6 +17,14 @@
  * limitations under the License.
  */
 """
+import calendar
+import datetime
+import struct
+from typing import Mapping, Union
+
+from dubbo.common.constants import MIN_INT_32, MAX_INT_32, DEFAULT_REQUEST_META
+from dubbo.common.exceptions import HessianTypeError
+from dubbo.common.util import double_to_long_bits, get_invoke_id
 
 """
 把Python的数据结构根据Hessian协议序列化为相应的字节数组
@@ -29,11 +37,6 @@
 * java.lang.String
 * java.lang.Object
 """
-import struct
-
-from dubbo.common.constants import MIN_INT_32, MAX_INT_32, DEFAULT_REQUEST_META
-from dubbo.common.exceptions import HessianTypeError
-from dubbo.common.util import double_to_long_bits, get_invoke_id
 
 
 class Object(object):
@@ -41,17 +44,21 @@ class Object(object):
     创建一个Java对象
     """
 
-    def __init__(self, path, values=None):
+    def __init__(self, path, values=None, field_meta: Mapping[str, str] = None):
         """
         :param path:   Java对象的路径，例如：java.lang.Object
         :param values: 可以在创建对象时就进行赋值
+        :param field_meta: java class meta for field
         """
-        if not isinstance(path, (str)):
+        if not isinstance(path, str):
             raise ValueError('Object path {} should be string type.'.format(path))
         self.__path = path
         if not isinstance(values, dict):
             values = {}
+        if not field_meta or not isinstance(field_meta, dict):
+            field_meta = {}
         self.__values = values
+        self.__field_meta = field_meta
 
     def __getitem__(self, key):
         return self.__values[key]
@@ -75,6 +82,28 @@ class Object(object):
 
     def get_path(self):
         return self.__path
+
+    def has_meta(self, key):
+        return key in self.__field_meta.keys()
+
+    def get_meta(self, key):
+        return self.__field_meta.get(key)
+
+
+class BigDecimal(Object):
+    def __init__(self, value=Union[str, float]):
+        """
+        java.math.BigDecimal
+        """
+        super().__init__(path='java.math.BigDecimal', values={'value': str(value)})
+
+
+class BigInteger(Object):
+    def __init__(self, value=Union[str, int]):
+        """
+        java.math.BigInt
+        """
+        super().__init__(path='java.math.BigInteger', values={'value': str(value)})
 
 
 class Request(object):
@@ -172,7 +201,7 @@ class Request(object):
             'version': version,
         }
         if group:
-            attachments.update({'group':group})
+            attachments.update({'group': group})
         # attachments参数以H开头，以Z结尾
         body.append(ord('H'))
         for key in attachments.keys():
@@ -230,6 +259,18 @@ class Request(object):
             result.append(value >> 16)
             result.append(value >> 8)
             result.append(value)
+        return result
+
+    @staticmethod
+    def _encode_datetime(value):
+        result = []
+        result.extend(list(bytearray(struct.pack('>cq', b'd', int(calendar.timegm(value.timetuple())) * 1000))))
+        return result
+
+    @staticmethod
+    def _encode_long(value):
+        result = []
+        result.extend(list(bytearray(struct.pack('>cq', b'L', value))))
         return result
 
     @staticmethod
@@ -353,7 +394,25 @@ class Request(object):
             result.append(ord('O'))
             result.extend(self._encode_single_value(class_id))
         for field_name in field_names:
-            result.extend(self._encode_single_value(value[field_name]))
+            if value.has_meta(field_name):
+                field_meta = value.get_meta(field_name)
+                if field_meta == 'java.math.BigDecimal':
+                    result.extend(self._encode_map_object(BigDecimal(value[field_name])))
+                if field_meta == 'java.math.BigInteger':
+                    result.extend(self._encode_map_object(BigInteger(value[field_name])))
+                if field_meta == 'long':
+                    result.extend(self._encode_long(int(value[field_name])))
+            else:
+                result.extend(self._encode_single_value(value[field_name]))
+        return result
+
+    def _encode_map_object(self, value: Object):
+        result = []
+        result.extend(list(bytearray(struct.pack('!c', b'M'))))
+        result.extend(self._encode_str(value.get_path()))
+        result.extend(self._encode_str('value'))
+        result.extend(self._encode_str(str(value['value'])))
+        result.extend(list(bytearray(struct.pack('!c', b'Z'))))
         return result
 
     def _encode_list(self, value):
@@ -417,8 +476,10 @@ class Request(object):
         elif isinstance(value, float):
             return self._encode_float(value)
         # 字符串类型
-        elif isinstance(value, (str)):
+        elif isinstance(value, str):
             return self._encode_str(value)
+        elif isinstance(value, datetime.datetime):
+            return self._encode_datetime(value)
         # 对象类型
         elif isinstance(value, Object):
             return self._encode_object(value)
