@@ -91,11 +91,11 @@ class Object(object):
 
 
 class BigDecimal(Object):
-    def __init__(self, value=Union[str, float]):
+    def __init__(self, value=Union[str, float, None]):
         """
         java.math.BigDecimal
         """
-        super().__init__(path='java.math.BigDecimal', values={'value': str(value)})
+        super().__init__(path='java.math.BigDecimal', values={'value': str(value) if value is not None else None})
 
 
 class BigInteger(Object):
@@ -103,7 +103,7 @@ class BigInteger(Object):
         """
         java.math.BigInt
         """
-        super().__init__(path='java.math.BigInteger', values={'value': str(value)})
+        super().__init__(path='java.math.BigInteger', values={'value': str(value) if value is not None else None})
 
 
 class Request(object):
@@ -409,9 +409,9 @@ class Request(object):
     def _encode_map_object(self, value: Object):
         result = []
         result.extend(list(bytearray(struct.pack('!c', b'M'))))
-        result.extend(self._encode_str(value.get_path()))
-        result.extend(self._encode_str('value'))
-        result.extend(self._encode_str(str(value['value'])))
+        result.extend(self._encode_single_value(value.get_path()))
+        result.extend(self._encode_single_value('value'))
+        result.extend(self._encode_single_value(str(value['value'])))
         result.extend(list(bytearray(struct.pack('!c', b'Z'))))
         return result
 
