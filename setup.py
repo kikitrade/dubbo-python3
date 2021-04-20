@@ -22,7 +22,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='dubbo-python3',
-    version='1.0.0',
+    version='1.0.2',
     url='https://github.com/kikitrade/dubbo-python3',
     author='holly',
     author_email='hao.holly@gmail.com',
